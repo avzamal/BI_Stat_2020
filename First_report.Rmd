@@ -1,0 +1,278 @@
+---
+title: "How old is mussel"
+---
+
+Here is the list of the packages
+```{r load packages and data, echo=TRUE, message=FALSE, warning=TRUE, cashe = TRUE}
+require(dplyr)
+require(ggplot2)
+require(psych)
+require(graphics)
+require(cowplot)
+require(stats)
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r Import function, message=FALSE, warning=FALSE, include=FALSE}
+#This function create list of folder+filename. Then one by one all files are added to dataframe.
+import_all <- function(folder) {
+  files_list <- list.files(path=folder, pattern="*.csv")
+  files_list_full <- c()
+  files_list_full[1] <- paste(folder,'/',files_list[1],sep='')
+  imported_df <- read.csv(files_list_full[1])
+  
+  for (i in 2:length(files_list)) {
+    files_list_full[i] <- paste(folder,'/',files_list[i],sep='') 
+    df <- data.frame(read.csv(files_list_full[i]))
+    imported_df <- rbind(imported_df,df)
+  }
+  return(imported_df)
+  }
+
+```
+## EDA
+```{r message=FALSE, warning=FALSE}
+# Here is the beginning of the report and the point, where report receive data from the folder
+imported_files <- import_all('/Users/Zamalutdinov/Desktop/Institute/R/First_project/Data')
+str(imported_files)
+```
+We see that some variables have character type and Sex is a factor. We changed name of Sex column and checked why these varyables are character.
+
+```{r Preview character data, echo=FALSE, message=FALSE, warning=FALSE}
+colnames(imported_files)[2] <- "Sex"
+preview <- imported_files %>% arrange(desc(Rings)) %>% select(Rings) %>% slice(1:5)
+preview[2] <- imported_files %>% arrange(desc(Sex)) %>% select(Sex) %>% slice(1:5)
+preview[3] <- imported_files %>% arrange(desc(Length)) %>% select(Length) %>% slice(1:5)
+preview
+```
+
+In order to use maximum of the data we converted words into nums and transformed columns into types essential for future work.
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+#These functions change words to numbers
+Sex_standartize <- function(value) {
+  if (is.na(value)) {
+    return(value)
+  } else if (value == 'one' || value == 'male') {
+    value <- 1
+  } else if (value == 'two' || value == 'female') {
+    value <- 2
+  } else if (value == 'three' || value == 'uvenil') {
+    value <- 3
+  }
+  return(value)
+}
+Ring_standartize <- function(value) {
+  if (is.na(value)) {
+    return(value)
+  } else if (value == 'nine') {
+    value <- 9
+  } else if (value == 'ten') {
+    value <- 10
+  } else if (value == 'eleven') {
+    value <- 11
+  } else if (value == 'twelve') {
+    value <- 12
+  } else if (value == 'thirteen') {
+    value <- 13
+  } else if (value == 'fourteen') {
+    value <- 14
+  } else if (value == 'fifteen') {
+    value <- 15
+  } else if (value == 'sixteen') {
+    value <- 16
+  } else if (value == 'seventeen') {
+    value <- 17
+  } else if (value == 'eighteen') {
+    value <- 18
+  }
+  return(value)
+}
+
+imported_files$Sex <- sapply(imported_files$Sex,Sex_standartize)
+imported_files$Sex <- factor(imported_files$Sex, labels = c('Male','Female','Uvenil'))
+imported_files$Rings <- sapply(imported_files$Rings,Ring_standartize)
+imported_files$Rings <- as.numeric(imported_files$Rings)
+imported_files$Length <- as.numeric(imported_files$Length)
+```
+
+Blowout visualiation
+
+```{r Blowouts, echo=FALSE, message=FALSE, warning=FALSE}
+plot_1 <- ggplot(imported_files, aes(Rings)) +
+  geom_boxplot()+
+  geom_density()+
+  theme_bw()
+plot_3 <- ggplot(imported_files, aes(Length)) +
+  geom_boxplot()+
+  geom_density()+
+  theme_bw()
+plot_4 <- ggplot(imported_files, aes(Diameter)) +
+  geom_boxplot()+
+  geom_density()+
+  theme_bw()
+plot_5 <- ggplot(imported_files, aes(Height)) +
+  geom_boxplot()+
+  geom_density()+
+  theme_bw()
+plot_6 <- ggplot(imported_files, aes(Whole_weight)) +
+  geom_boxplot()+
+  geom_density()+
+  theme_bw()
+plot_7 <- ggplot(imported_files, aes(Shucked_weight)) +
+  geom_boxplot()+
+  geom_density()+
+  theme_bw()
+plot_8 <- ggplot(imported_files, aes(Viscera_weight)) +
+  geom_boxplot()+
+  geom_density()+
+  theme_bw()
+plot_9 <- ggplot(imported_files, aes(Shell_weight)) +
+  geom_boxplot() +
+  geom_density()+
+  theme_bw()
+
+boxplots <- plot_grid(plot_1, plot_3, plot_4, plot_5, plot_6, plot_7, plot_8, plot_9)
+boxplots
+```
+
+
+According to boxplots, two serious blowouts in Height column. So we will remove this observation from data analyses. Also we detected NA value in Sex column, so we remove it in order to facilate our work.
+```{r message=FALSE, warning=FALSE, include=FALSE}
+imported_files <- imported_files %>% filter(Height<0.5) %>% filter(!is.na(Sex))
+```
+
+
+Next we will visualize links between variables
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+plot(imported_files)
+```
+
+According to plots we can suggest interactions between Length, Diameter and Height, Height and Rings, Whole_weight, Shucked_weight, Viscera_weight and Shell_weight, Height and Weights.
+
+## Statistical analysis
+
+### Calculation of statistical parameters for different variables
+We calculated mean value and standart deviation of Length grouped by Sex
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+imported_files %>% 
+  select(Sex, Length) %>% 
+  group_by(Sex) %>% 
+  summarise(mean(Length, na.rm = T), sd(Length, na.rm = T)) %>% 
+  slice(1:3) %>% 
+  rename("Mean"="mean(Length, na.rm = T)" ,"Standart deviation"='sd(Length, na.rm = T)')
+```
+```{r message=FALSE, warning=FALSE, include=FALSE}
+sd_Height <- sd(imported_files$Height, na.rm = T)
+mean_height <- mean(imported_files$Height, na.rm = T)
+Height_percent <- round(pnorm(q = (0.135 - mean_height)/sd_Height)*100, digits = 2)
+```
+
+Next we calculated the percent of mussels with the Height less than 0.165. `r Height_percent`%. 
+```{r message=FALSE, warning=FALSE, include=FALSE}
+length_92 <- quantile(imported_files$Length, probs = 0.92, na.rm = T)
+```
+
+We calculated that only 8% of all mussels have Length more than `r length_92`.
+
+Also we standartise Length value and save result in Lenght_z_scores variable
+```{r message=FALSE, warning=FALSE}
+mean_length <- mean(imported_files$Length, na.rm = T)
+sd_length <- sd(imported_files$Length, na.rm = T)
+Lenght_z_scores <- sapply(imported_files$Length, 
+                          function(x) (x - mean_length)/sd_length)
+```
+
+### Comparison of Diameter of mussels with 5 and 15 Rings
+We compared Diameter of mussels with 5 and 15 Rings.  
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+rings_diameter <- imported_files %>% 
+  filter(Rings == 5 | Rings == 15) %>% 
+  select(Rings, Diameter) 
+rings_diameter$Rings <- as.factor(rings_diameter$Rings)  
+  
+
+ggplot(rings_diameter, aes(x = Rings, y = Diameter)) +
+  geom_boxplot()+
+  theme_bw()
+shapiro_test_result <- shapiro.test(rings_diameter$Diameter)
+wilcox_test_result <- wilcox.test(Diameter~Rings, data = rings_diameter)
+```
+
+According to the plot, we see that mussels Diameter with 5 rings probably less than with 15 rings. As stated by Shapiro-Wilk normality test, Diameter value is not normally distributed (p value = `r format(shapiro_test_result$p.value, digits = 2, scientific = T)`). So we provided Mann-Whitney test and demonstarted that difference is statisticaly significant (p value = `r format(wilcox_test_result$p.value, digits = 2, scientific = T)`)
+
+### Correlation between Diameter and Whole_weight
+
+On the summary plot we saw that between Diameter and Whole_weight may be correlation. Let's see this plot one more time. 
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(imported_files, aes(x = Whole_weight, y = Diameter))+
+  geom_point() +
+  geom_smooth()+
+  theme_bw()
+shapiro_test_result_weight <- shapiro.test(imported_files$Whole_weight)
+shapiro_test_result_Diameter <- shapiro.test(imported_files$Diameter)
+cor_test_result <- cor.test(imported_files$Whole_weight,imported_files$Diameter, method = "spearman")
+```
+
+According to Shapiro-Wilk normality test, values are not normally distributed (for Diameter p value = `r format(shapiro_test_result_Diameter$p.value, digits = 2, scientific = T)`, for Whole_weight p value = `r format(shapiro_test_result_weight$p.value, digits = 2, scientific = T)`).
+So, we calculated correlation coefficient using Spearmen test and the link is statistically significant (t = `r format(cor_test_result$statistic, digits =2)`, p value = `r format(cor_test_result$p.value, digits = 2, scientific=TRUE)`, cor = `r format(cor_test_result$estimate, digits =2)`). 
+
+### Correlation between Length and Diameter
+
+According to the previous plots, there may be correlation between Length and Diameter. Dots forms almost straight line on the plot.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(imported_files, aes(x = Length, y = Diameter))+
+  geom_point() +
+  geom_smooth()+
+  theme_bw()
+shapiro_test_result_Length <- shapiro.test(imported_files$Length)
+shapiro_test_result_Diameter <- shapiro.test(imported_files$Diameter)
+cor_test_result_LD <- cor.test(imported_files$Length,imported_files$Diameter, method = "spearman")
+```
+
+As stated by Shapiro-Wilk normality test, values are not normally distributed (for Diameter p value = `r format(shapiro_test_result_Diameter$p.value, digits = 2, scientific = T)`, for Length p value = `r format(shapiro_test_result_Length$p.value, digits = 2, scientific = T)`).
+So, we calculated correlation coefficient using Spearmen test and the link is statistically significant (t = `r format(cor_test_result_LD$statistic, digits =2)`, p value = `r format(cor_test_result_LD$p.value, digits = 2, scientific=TRUE)`, cor = `r format(cor_test_result_LD$estimate, digits =2)`). 
+
+### Correlation between Volume and Whole_weight
+
+We also decided to check, if the volume and whole_weight are in linear dependence. It is possible that density may change during mussel life.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+Volume_added <- imported_files %>% 
+  mutate(Volume = Length*Diameter*Height) 
+ggplot(Volume_added, aes(x = Volume, y = Whole_weight))+
+  geom_point() +
+  geom_smooth()+
+  theme_bw()
+shapiro_test_result_Volume <- shapiro.test(Volume_added$Volume)
+shapiro_test_result_Whole_weight <- shapiro.test(Volume_added$Whole_weight)
+cor_test_result_VW <- cor.test(Volume_added$Whole_weight,Volume_added$Volume, method = "spearman")
+```
+
+According to Shapiro-Wilk normality test, values are not normally distributed (for Volume p value = `r format(shapiro_test_result_Volume$p.value, digits = 2, scientific = T)`, for Whole_weight p value = `r format(shapiro_test_result_Whole_weight$p.value, digits = 2, scientific = T)`).
+We calculated correlation coefficient using Spearmen test and the link is statistically significant (t = `r format(cor_test_result_VW$statistic, digits =2)`, p value = `r format(cor_test_result_VW$p.value, digits = 2, scientific=TRUE)`, cor = `r format(cor_test_result_VW$estimate, digits =2)`). So the dependency is linear and the density is probably constant.
+
+
+One more conformation may be obtained by checking the share of Shell_weight in Whole_weight for mussels with 5 and 15 rings. If share is constant, it confirms that density is also constant.
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+imported_files <- imported_files %>% 
+  mutate(Shell_ratio = Shell_weight/Whole_weight)
+rings_shell <- imported_files %>% 
+  filter(Rings == 5 | Rings == 15)
+rings_shell$Rings <- as.factor(rings_diameter$Rings)  
+  
+
+ggplot(rings_shell, aes(x = Rings, y = Shell_ratio)) +
+  geom_boxplot()+
+  theme_bw()
+shapiro_test_result_ratio <- shapiro.test(rings_shell$Shell_ratio)
+wilcox_test_result_RW <- wilcox.test(Shell_ratio~Rings, data = rings_shell)
+```
+
+According to the plot, we see that mussels with 5 and 15 rings probably have the same share of Shell_weight in Whole_weight. As stated by Shapiro-Wilk normality test, Shell_ratio value is not normally distributed (p value = `r format(shapiro_test_result_ratio$p.value, digits = 2, scientific = T)`). So we provided Mann-Whitney test and demonstarted that difference is not statisticaly significant (p value = `r format(wilcox_test_result_RW$p.value)`)
+
