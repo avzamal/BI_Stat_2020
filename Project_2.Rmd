@@ -1,0 +1,237 @@
+---
+title: "Second_project"
+
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+require(MASS)
+require(dplyr)
+require(ggplot2)
+require(car)
+require(gridExtra)
+theme_set(theme_bw())
+```
+
+For this work we used R packages: MASS, dplyr, ggplot2, car, gridExtra. They should be installed before compilation.
+
+# Model creation
+
+Basing on Boston dataset from MASS package we fitted linear model that predicts median value of owner-occupied homes in \$1000s (medv variable).
+Firstly, we checked the data.
+
+```{r data structure}
+boston <-  as_tibble(Boston)
+str(boston)
+```
+
+We see that chas and rad are integer values. According to data description chas indicate if tract bounds Charles River. So it is factor variable. rad is an index of accessibility to radial highways. It is not a factor variable, but it has only 9 discrete values. We will use rad as factor in our model. All other variables we will standartize in order to compare contributions of all predictors.
+
+```{r Standrtizing, message=FALSE, warning=FALSE, include=FALSE}
+boston$chas <- factor(boston$chas, labels = c('No', 'Yes'))
+boston$rad <- factor(boston$rad)
+boston_scaled <- boston %>% 
+  mutate(crim = scale(crim)) %>% 
+  mutate(zn = scale(zn)) %>% 
+  mutate(indus = scale(indus)) %>%
+  mutate(nox = scale(nox)) %>%
+  mutate(rm = scale(rm)) %>%
+  mutate(age = scale(age)) %>%
+  mutate(dis = scale(dis)) %>%
+  mutate(tax = scale(tax)) %>%
+  mutate(ptratio = scale(ptratio)) %>%
+  mutate(black = scale(black)) %>%
+  mutate(lstat = scale(lstat))
+```
+
+After that we created full model with all possible predictors
+```{r model, echo=FALSE, message=FALSE, warning=FALSE}
+model <- lm(medv~., boston_scaled)
+mod_diag <- fortify(model)
+summary(model)
+```
+
+# Model diagnostics
+Then we provided diagnostics of our model:
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(mod_diag, aes(x = 1:nrow(mod_diag), y = .cooksd)) + 
+  geom_bar(stat = "identity") + 
+  geom_hline(yintercept = 2, color = "red")
+```
+
+Cook's distances are low, so there is no highly influential points.
+
+```{r echo=FALSE}
+qqPlot(mod_diag$.fitted)
+```
+
+At the right side of the plot some points are upper than it should be in normal distribution. However, most of the values are normaly distributed.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+gg_resid <- ggplot(data = mod_diag, aes(x = .fitted, y = .stdresid)) +
+  geom_point() + 
+  geom_hline(yintercept = 0)+
+  geom_hline(yintercept = 2, color = "red") +
+  geom_hline(yintercept = -2, color = "red") +
+  geom_smooth(method = "lm")
+gg_resid
+```
+
+Our data is homoscedastic, but has some outliers.
+
+```{r diagnostics}
+vif(model)
+```
+
+According to VIF, several variables are collinear with other predictors.
+
+# Plot of relationship between predicted values of homes value and lstat
+Maximum estimate value has lstat predictor. We draw a plot of relationship between predicted values of homes value and lstat.
+```{r plot, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(mod_diag, aes(x = lstat, y = .fitted)) +
+  geom_point() +
+  geom_smooth(method = 'lm')
+```
+
+We see that our model is far from ideal state, so we need to optimize it.
+
+# Model optimization
+
+Firstly, we simplified rad predictor. Instead of 9 levels we will use 2. Values less than 24 are Near to radial highways and 24 is Far.
+```{r message=FALSE, warning=FALSE, include=FALSE}
+boston_scaled$rad <- as.double(boston$rad)
+boston_scaled <- boston_scaled %>% 
+  mutate(rad = replace(rad, rad < 9, 0)) %>%
+  mutate(rad = replace(rad, rad == 9, 1))
+boston_scaled$rad <- factor(boston_scaled$rad, labels = c('Near', 'Far'))
+model_01 <- lm(medv~., boston_scaled)
+summary(model_01)
+vif(model_01)
+```
+
+Then we removed predictors according to VIF.
+
+```{r}
+mod_1 <- update(model_01, .~. - tax)
+vif(mod_1)
+
+mod_2 <- update(mod_1, .~. - nox)
+vif(mod_2)
+
+mod_3 <- update(mod_2, .~. - dis)
+vif(mod_3)
+
+mod_4 <- update(mod_3, .~. - indus)
+vif(mod_4)
+
+mod_5 <- update(mod_4, .~. - age)
+vif(mod_5)
+
+mod_6 <- update(mod_5, .~. - rad)
+summary(mod_6) 
+vif(mod_6)
+```
+
+lstat predictor was saved in our model because of its significance.
+Also we decided to remove some observations which were outliers accoording to residues plot. We deleted observations that have stadartized residues more than 3 in absolute value.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+mod_diag %>% filter(.stdresid > 3 | .stdresid < -3)
+boston_scaled <- boston_scaled[-c(187,365,366,368,369,370,371,372,372,373,375,413),]
+model_02 <- lm(medv~crim+zn+chas+rm+ptratio+black+lstat, boston_scaled)
+summary(model_02)
+```
+
+Then we removed zn predictor from the model because of its insignificance.
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+mod_7 <- update(model_02, .~. - zn)
+summary(mod_7)
+```
+
+In order to make our model better we decided to check if we included all values that correlate with residues.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+mod_diag_1_2 <- fortify(mod_7)
+gg_resid <- ggplot(data = mod_diag_1_2, aes(x = .fitted, y = .stdresid)) + 
+  geom_point() + 
+  geom_hline(yintercept = 0)+
+  geom_hline(yintercept = 2, color = "red") +
+  geom_hline(yintercept = -2, color = "red") +
+  geom_smooth(method = "lm")
+res_1 <- gg_resid + aes(x = boston_scaled$tax)
+res_2 <- gg_resid + aes(x = boston_scaled$nox)
+res_3 <- gg_resid + aes(x = boston_scaled$dis)
+res_4 <- gg_resid + aes(x = boston_scaled$indus)
+res_5 <- gg_resid + aes(x = boston_scaled$zn)
+res_6 <- gg_resid + aes(x = boston_scaled$age)
+grid.arrange(res_1, res_2, res_3, res_4, res_5, res_6, nrow = 2)
+```
+
+We see that residues correlates with nox and dis variables. So we included nox and dis in our model.
+
+```{r}
+mod_8<-update(mod_7, .~. + dis + nox)
+summary(mod_8)
+vif(mod_8)
+```
+
+dis and nox included together have a large VIF. So we tried to include one of them.
+
+```{r}
+mod_8_1<-update(mod_7, .~. + nox)
+summary(mod_8_1)
+vif(mod_8_1)
+mod_8_2<-update(mod_7, .~. + dis)
+summary(mod_8_2)
+vif(mod_8_2)
+```
+
+Model with included dis has higher adjusted in comparison with model with nox predictor included. Finally, we provided diagnostics of our last model.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+mod_diag_2 <- fortify(mod_8_2)
+ggplot(mod_diag_2, aes(x = 1:nrow(mod_diag_2), y = .cooksd)) + 
+  geom_bar(stat = "identity") + 
+  geom_hline(yintercept = 2, color = "red")
+```
+
+Cook's distances are low, so there is no highly influential points.
+
+```{r echo=FALSE}
+qqPlot(mod_diag_2$.fitted)
+```
+
+Most of the values are normaly distributed.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+gg_resid <- ggplot(data = mod_diag_2, aes(x = .fitted, y = .stdresid)) +
+  geom_point() + 
+  geom_hline(yintercept = 0)+
+  geom_hline(yintercept = 2, color = "red") +
+  geom_hline(yintercept = -2, color = "red") +
+  geom_smooth(method = "lm")
+gg_resid
+```
+
+Our data is homoscedastic, outliers are not significant.
+
+```{r}
+vif(mod_8_2)
+```
+
+According to VIF, only lstat has rather high collinearity with other predictors.
+
+# Final model
+We rebuild our model on Boston dataset without standertizing. 
+```{r}
+final_model <- lm(medv~crim+chas+rm+ptratio+black+lstat+dis, boston)
+summary(final_model)
+```
+Our final model:
+
+**medv = 1.4069 + (-0.0903) * crim + 6.2944 * rm + (-0.9305) * ptratio + 0.0128 * black + (-0.3909) * lstat + (-0.284) * dis + 1.4712 * chasYes**
+
+So, these predictors are the most important in price formation. rm parameter influence on medv most of all.
+
+
