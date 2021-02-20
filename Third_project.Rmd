@@ -1,0 +1,198 @@
+---
+title: "Third project"
+author: "Aleksei Zamalutdinov"
+date: "2/14/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE)
+require(readxl)
+require(dplyr)
+require(ggplot2)
+require(car)
+require(vegan)
+require(plotly)
+require(psych)
+require(multcomp)
+theme_set(theme_bw())
+```
+In this project we use following packages: readxl, dplyr, ggplot2, car, vegan, plotly, psych, multicomp.
+
+## Dataset description
+
+We used Mice Protein Expression Data Set in this project. 
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+mouse_data <- read_excel('/Users/Zamalutdinov/Documents/Yandex.Disk.localized/Institute/R/Third_project/Data_Cortex_Nuclear.xls')
+mouse_data <- as_tibble(mouse_data)
+head(mouse_data)
+```
+
+We see that there are 82 columns in total in our data and 77 of them contain information about protein expression.
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+mouses_list <- as.character(lapply(strsplit(mouse_data$MouseID, split="_"), "[", 1))
+unique_mouses <- unique(mouses_list)
+group_quantity <- mouse_data %>% group_by(class) %>% count(class) %>% mutate(mouses = n/15)
+group_quantity$n <- NULL
+```
+In total we have `r length(unique_mouses)` mouses divided into `r length(group_quantity$class)` groups. 
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+group_quantity
+```
+Some groups differ in size from mean value `r mean(group_quantity$mouses)`. However, we think that groups are balanced.
+We have checked the number of observations without NA. In total we have `r sum(complete.cases(mouse_data))` full observations.
+
+## BDNF_N expression
+Firstly, we make a boxplot to visualize expression level of BDNF_N.
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+bdnf_set <- mouse_data %>% dplyr::select(class, BDNF_N)
+bdnf_set$class <- as.factor(bdnf_set$class)
+ggplot(bdnf_set, aes(x = class, y = BDNF_N, color = class)) +
+  geom_boxplot() +
+  theme_bw()
+
+bdnf_model <- lm(BDNF_N ~ class, bdnf_set)
+anova_bdnf <- Anova(bdnf_model)
+```
+
+According to boxplot, we can not conclude that expression level of BDNF_N differ in one of the classes. We use Anova analysis in order to reveal if BDNF_N expression level depends on classes. According to Anova result, expression level of BDNF_N significally depends on mouse class. F =`r anova_bdnf[[3]][1]` , p_value = `r anova_bdnf[[4]][1]`, df_1 = `r anova_bdnf[[2]][1]`, df_2 = `r anova_bdnf[[2]][2]`. 
+
+We also provide a Tukey post-hok test in order to determine classes pairs with significant difference.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+post_hoch <- glht(bdnf_model, linfct = mcp(class = "Tukey"))
+result<-summary(post_hoch)
+result
+```
+
+Expression level of BDNF_N protein in c-CS-m class significantly differ from expression levels in c-SC-m, c-SC-s, t-CS-m, t-CS-s, t-SC-m; in c-CS-s class differ from expression levels in c-SC-m, c-SC-s, t-CS-m, t-CS-s, t-SC-m; in c-SC-m class differ from expression levels in c-SC-s, t-CS-m, t-SC-m, t-SC-s and expression level in t-CS-s differ from it in t-SC-s.
+
+## Linear model prediction of ERBB4_N
+We fitted linear model that predicts ERBB4_N expression level. We droped off 6 proteins with too many NAs: H3MeK4_N, EGR1_N, H3AcK18_N, BAD_N, BCL2_N, pCFOS_N, in order to save maximum observations. We began with model which included all proteins. 
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+mouse_data_models <- mouse_data %>% dplyr::select(2:78, 82) %>% 
+  mutate(class = factor(class)) %>% 
+  dplyr::select(-H3MeK4_N, -EGR1_N, -H3AcK18_N, -BAD_N, -BCL2_N, -pCFOS_N)
+mouse_model <- lm(ERBB4_N ~ . - class, data = mouse_data_models)
+summary(mouse_model)
+```
+
+We see that pS6_N has NA coefficients. So, we dropped it off from our model. Also many predictors are insignificant.
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+mouse_model_1 <- update(mouse_model, .~. - pS6_N) #because coef = NA
+vif(mouse_model_1)
+```
+
+According to VIF parameter our model contains many collinear predictors. So, we succesively deleted predictors with VIF more than 40, 20 and 12. Then we removed insignificant predictors.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+mouse_model_2 <- update(mouse_model_1, .~. - ITSN1_N - NR1_N - pERK_N - 
+                          pNR1_N - pNR2B_N - BRAF_N - ERK_N - TRKA_N - Bcatenin_N - AcetylH3K9_N) 
+mouse_model_3 <- update(mouse_model_2, .~. - pAKT_N - pJNK_N - PKCA_N - 
+                          pMEK_N - pPKCAB_N - ELK_N - AMPKA_N - NUMB_N) 
+mouse_model_4 <- update(mouse_model_3, .~. - BDNF_N - NR2A_N - GSK3B_N - JNK_N - MEK_N - MTOR_N - P38_N - pMTOR_N - 
+                          pNUMB_N - RAPTOR_N - TIAM1_N - pPKCG_N - ARC_N - EGR1_N - H3MeK4_N - CaNA_N) 
+mouse_model_5 <- update(mouse_model_4, .~. - pNR2A_N - CAMKII_N - CREB_N - RSK_N - APP_N - pP70S6_N - P70S6_N - CDK5_N - 
+                          ADARB1_N - nNOS_N - GFAP_N - GluR3_N - SNCA_N - BCL2_N - H3AcK18_N)
+mouse_model_6 <- update(mouse_model_5, .~. - pCAMKII_N - pBRAF_N - pELK_N - pRSK_N - SOD1_N - NR2B_N)
+summary(mouse_model_6) #Adjusted R-squared:  0.7819
+vif(mouse_model_6)
+```
+
+Most of predictors are significant now. However, many predictors have high VIF. So, we removed all predictors with VIF > 2.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+mouse_model_7 <- update(mouse_model_6, .~. - IL1B_N)
+mouse_model_8 <- update(mouse_model_7, .~. - Ubiquitin_N)
+mouse_model_9 <- update(mouse_model_8, .~. - BAD_N)
+mouse_model_10 <- update(mouse_model_9, .~. - S6_N)
+mouse_model_11 <- update(mouse_model_10, .~. - pCREB_N)
+mouse_model_12 <- update(mouse_model_11, .~. - pGSK3B_Tyr216_N)
+mouse_model_13 <- update(mouse_model_12, .~. - SYP_N)
+mouse_model_14 <- update(mouse_model_12, .~. - pGSK3B_N -BAX_N)
+summary(mouse_model_14) #Adjusted R-squared:  0.7079
+```
+Our final model:
+
+**ERBB4_N = 0.023221 + (-0.006879) * DYRK1A_N + 0.018966 * AKT_N + 0.014025 * DSCR1_N + (-0.042075) * RRP1_N + 0.064416 * Tau_N + (-0.045624) * GluR4_N + 0.101510 * P3525_N + 0.013226 * pCASP9_N + 0.016399 * PSD95_N + 0.046225 * SHH_N + 0.038309 * SYP_N**
+
+Our model includes significant predictors with low VIF. Then we provided model diagnostic.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+mod_diag <- fortify(mouse_model_14)
+ggplot(mod_diag, aes(x = 1:nrow(mod_diag), y = .cooksd)) + 
+  geom_bar(stat = "identity") + 
+  geom_hline(yintercept = 2, color = "red")
+```
+
+Cook's distances are low, so there is no highly influential points.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+qqPlot(mod_diag$.fitted)
+```
+
+Some points are upper at the left and right side of the plot than it should be in normal distribution. However, most of the values are normaly distributed.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+gg_resid <- ggplot(data = mod_diag, aes(x = .fitted, y = .stdresid)) +
+  geom_point() + 
+  geom_hline(yintercept = 0)+
+  geom_hline(yintercept = 2, color = "red") +
+  geom_hline(yintercept = -2, color = "red") +
+  geom_smooth(method = "lm")
+gg_resid
+```
+
+Our data is homoscedastic, but has some outliers.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+vif(mouse_model_14)
+```
+
+According to VIF, none of predictors are collinear. Model diagnostic and adjusted R-squared show that our model is rather good. However, our model may be overfitted.
+
+## PCA
+We used PCA in order to build ordination and reduce dimensions number. Observations with NAs were not included in PCA. You can see ordination plot with first 2 principal component axes below.
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+mouse_data_models_na_rm <- na.omit(mouse_data_models)
+mouse_pca <- rda(mouse_data_models_na_rm[, -72], scale = TRUE)
+biplot(mouse_pca, scaling = "sites", display = "sites")
+```
+
+Also we made the plot of eigenvectors with first 2 principal component axes.
+
+```{r plot of eigenvectors, echo=FALSE, message=FALSE, warning=FALSE}
+biplot(mouse_pca, scaling = "species", display = "species")
+```
+
+We made a plot of explained proportion for each principal component axes.
+```{r explained proportion, echo=FALSE, message=FALSE, warning=FALSE}
+
+pca_summary <- summary(mouse_pca)
+pca_result <- as.data.frame(pca_summary$cont)
+plot_data <- as.data.frame(t(pca_result[c("Proportion Explained"),]))
+plot_data$component_full <- rownames(plot_data)
+plot_data$Component <- as.integer(sapply(strsplit(rownames(plot_data), split="[.PC]"), "[", 4))
+
+ggplot(plot_data, aes(Component, `Proportion Explained`)) + 
+  geom_bar(stat = "identity") + 
+  theme_bw()
+```
+
+In total, first three principal components explain `r sum(plot_data[1:3,1])*100`% of total variability. We built a 3D-plot with first 3 axes.
+
+```{r 3D-plot, echo=FALSE, message=FALSE, warning=FALSE}
+df_scores <- data.frame(mouse_data_models_na_rm,
+                        scores(mouse_pca, display = "sites", choices = c(1, 2, 3), scaling = "sites"))
+
+fig <- plot_ly(df_scores, x = ~PC1, y = ~PC2, z = ~PC3, color = ~class, 
+               colors = c('#00FF7F', '#4682B4', '#D2B48C', '#008080', '#D8BFD8', '#FF6347', '#40E0D0', '#EE82EE'), 
+               size = I(20))
+fig <- fig %>% add_markers()
+fig
+```
+
+According to plot, it is difficult to separate classes using first 3 axes.
+
+
