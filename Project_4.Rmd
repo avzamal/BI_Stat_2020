@@ -1,0 +1,79 @@
+---
+title: "Fourth_project"
+author: "Aleksei Zamalutdinov"
+date: "2/25/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+require(survival)
+require(dplyr)
+require(ggplot2)
+require(psych)
+require(ggfortify)
+require(survminer)
+require(gridExtra)
+require(coin)
+```
+In this project we used following packages: survival, dplyr, ggplot2, psych, plotly, ggfortify, survminer.
+
+## EDA
+We used ovarian dataset in this project. First of all, we provided EDA.
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+ovarian <- as_tibble(survival::ovarian)
+str(ovarian)
+```
+
+Some of our values are numeric, but they should be factor. We converted them. Then we make basic statistical analysis. Our data contain `r sum(!complete.cases(ovarian))` NA values.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+ovarian$resid.ds <- factor(ovarian$resid.ds, levels = c('1', '2'), labels = c('No', 'Yes'))
+ovarian$rx <- factor(ovarian$rx, levels = c('1', '2'), labels = c('Group 1', 'Group 2'))
+ovarian$ecog.ps <- factor(ovarian$ecog.ps, levels = c('1', '2'))
+describe(ovarian)
+```
+
+## Kaplan-Mayer survival plot
+We made a Kaplan-Mayer survival plot with all data points. 
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+km_fit <- survfit(Surv(futime, fustat) ~ 1, data=ovarian)
+autoplot(km_fit) + ggtitle("Total survival plot")
+```
+
+Many observations are censored, especially at the end of the plot. We also made plots of survival dependence on residual disease status, treatment group and ECOG performance status.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+km_resid_fit <- survfit(Surv(futime, fustat) ~ resid.ds, data=ovarian)
+res_1 <- autoplot(km_resid_fit) + ggtitle("Survival depending on residual disease")
+
+km_rx_fit <- survfit(Surv(futime, fustat) ~ rx, data=ovarian)
+res_2 <- autoplot(km_rx_fit) + ggtitle("Survival of two treatment groups")
+
+km_ecog_fit <- survfit(Surv(futime, fustat) ~ ecog.ps, data=ovarian)
+res_3 <- autoplot(km_ecog_fit) + ggtitle("Survival depending on ECOG performance status")
+grid.arrange(res_1, res_2, res_3)
+```
+
+## Log-rank test
+It is rather difficult to make some conclusions according to plots, so we provided group comparison using log-rank test. 
+```{r message=FALSE, warning=FALSE, include=FALSE}
+logrank_1 <- logrank_test(Surv(futime, fustat) ~ rx, data = ovarian)
+logrank_2 <-logrank_test(Surv(futime, fustat) ~ resid.ds, data = ovarian)
+logrank_3 <-logrank_test(Surv(futime, fustat) ~ ecog.ps, data = ovarian)
+```
+
+Differences between our groups are insignificant, however p.value of comparison two groups divided by residual disease status is near significant level and equal to `r logrank_2@distribution@pvalue(logrank_2@statistic@teststatistic)`. It may be a reason for further investigations of these groups.
+
+## Factor analysis and hazard ratio
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+cox <- coxph(Surv(futime, fustat) ~ rx + resid.ds + ecog.ps + age, data = ovarian)
+summary(cox)
+```
+
+We analysed risk factors and only age factor was significant with pvalue = `r summary(cox)$coefficients[4, 5]`. Then we illustarted it with hazard ratio plot.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+ggforest(cox, data = ovarian)
+```
+
